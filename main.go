@@ -238,6 +238,16 @@ func handleUnsubscribe(u gotelegrambot.Update, bp botParams) {
 
 }
 
+func handleSendReportLambda(u gotelegrambot.Update) {
+	bp := botParams{
+		botToken: os.Getenv("BOT_TOKEN"),
+		params: map[string]string{
+			"DATABASE_URL": os.Getenv("DATABASE_URL"),
+		},
+	}
+
+	handleSendReport(u, bp)
+}
 func handleSendReport(_ gotelegrambot.Update, bp botParams) {
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, bp.params["DATABASE_URL"])
@@ -346,15 +356,7 @@ func main() {
 	}
 
 	if e == "cron" {
-		bp := botParams{
-			botToken: os.Getenv("BOT_TOKEN"),
-			params: map[string]string{
-				"DATABASE_URL": os.Getenv("DATABASE_URL"),
-			},
-		}
-
-		handleSendReport(gotelegrambot.Update{}, bp)
-		return
+		lambda.Start(handleSendReportLambda)
 	}
 
 	if e == "prod" {
