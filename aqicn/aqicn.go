@@ -8,8 +8,8 @@ import (
 )
 
 // GetAreaAqi fetches the current feed for the station with the given id.
-func GetAreaAqi(id string) (*AqiResponse, error) {
-	u := fmt.Sprintf("https://api2.waqi.info/api/feed/@H%s/now.json", url.PathEscape(id))
+func GetAreaAqi(id string, apiToken string) (*FeedResponse, error) {
+	u := fmt.Sprintf("https://api.waqi.info/feed/@%s/?token=%s", url.PathEscape(id), url.PathEscape(apiToken))
 
 	resp, err := http.Get(u)
 	if err != nil {
@@ -21,9 +21,9 @@ func GetAreaAqi(id string) (*AqiResponse, error) {
 		return nil, fmt.Errorf("aqicn: GET %s: %s", u, resp.Status)
 	}
 
-	var r AqiResponse
+	var r FeedResponse
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return nil, fmt.Errorf("aqicn: decode response: %w", err)
+		return nil, fmt.Errorf("aqicn: decode feed response: %w", err)
 	}
 	return &r, nil
 }

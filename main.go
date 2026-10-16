@@ -126,8 +126,8 @@ func parseText(text string) (string, []string, bool) {
 
 // buildPM25Report fetches the current area AQIs and formats them as the
 // PM2.5 report text.
-func buildPM25Report() (string, error) {
-	areas, err := aqicnsg.GetAreaAqis()
+func buildPM25Report(apiToken string) (string, error) {
+	areas, err := aqicnsg.GetAreaAqis(apiToken)
 	if err != nil {
 		return "", fmt.Errorf("get area aqis: %w", err)
 	}
@@ -170,7 +170,7 @@ func sendMessage(botToken string, chatID int64, text string) error {
 }
 
 func handleNowCommand(u gotelegrambot.Update, bp botParams) {
-	text, err := buildPM25Report()
+	text, err := buildPM25Report(bp.params["AQICN_API_TOKEN"])
 	if err != nil {
 		log.Printf("%v", err)
 		return
@@ -242,7 +242,8 @@ func handleSendReportLambda(u gotelegrambot.Update) {
 	bp := botParams{
 		botToken: os.Getenv("BOT_TOKEN"),
 		params: map[string]string{
-			"DATABASE_URL": os.Getenv("DATABASE_URL"),
+			"DATABASE_URL":    os.Getenv("DATABASE_URL"),
+			"AQICN_API_TOKEN": os.Getenv("AQICN_API_TOKEN"),
 		},
 	}
 
@@ -272,7 +273,7 @@ func handleSendReport(_ gotelegrambot.Update, bp botParams) {
 	}
 
 	// Fetch the report once and send the same text to every subscriber.
-	text, err := buildPM25Report()
+	text, err := buildPM25Report(bp.params["AQICN_API_TOKEN"])
 	if err != nil {
 		log.Printf("%v", err)
 		return
@@ -311,6 +312,7 @@ func handleUpdate(u gotelegrambot.Update) {
 	b := bot{botToken: os.Getenv("BOT_TOKEN")}
 	b.params = map[string]string{}
 	b.params["DATABASE_URL"] = os.Getenv("DATABASE_URL")
+	b.params["AQICN_API_TOKEN"] = os.Getenv("AQICN_API_TOKEN")
 	b.register("now", handleNowCommand)
 	b.register("subscribe", handleSubscribe)
 	b.register("unsubscribe", handleUnsubscribe)
@@ -358,6 +360,7 @@ func main() {
 	if e == "cron" {
 		lambda.Start(handleSendReportLambda)
 	}
+	// handleSendReportLambda(gotelegrambot.Update{})
 
 	if e == "prod" {
 		lambda.Start(handleUpdate)

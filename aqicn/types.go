@@ -2,48 +2,16 @@ package aqicn
 
 import "encoding/json"
 
-type AqiResponse struct {
-	Dt  string `json:"dt"`
-	Rxs Rxs    `json:"rxs"`
-}
-
-type Rxs struct {
-	Obs    []Observation `json:"obs"`
-	Status string        `json:"status"`
-	Ver    string        `json:"ver"`
-}
-
-// Observation is one entry of rxs.obs. Entries with a status other than "ok"
-// (e.g. "nug") carry no Msg.
-type Observation struct {
-	Status string `json:"status"`
-	Msg    *Msg   `json:"msg,omitempty"`
-	UID    string `json:"uid,omitempty"`
-	Cached string `json:"cached,omitempty"`
-}
-
-type Msg struct {
-	AQI          int               `json:"aqi"`
-	Idx          int               `json:"idx"`
-	Attributions []Attribution     `json:"attributions"`
-	City         City              `json:"city"`
-	DominentPol  string            `json:"dominentpol"`
-	IAQI         map[string]IAQI   `json:"iaqi"`
-	Time         Time              `json:"time"`
-	Obs          map[string]Series `json:"obs"`
-	Forecast     Forecast          `json:"forecast"`
-	XSync        XSync             `json:"xsync"`
-}
-
 type Attribution struct {
 	URL  string `json:"url"`
 	Name string `json:"name"`
 }
 
 type City struct {
-	Geo  [2]float64 `json:"geo"`
-	Name string     `json:"name"`
-	URL  string     `json:"url"`
+	Geo      [2]float64 `json:"geo"`
+	Name     string     `json:"name"`
+	URL      string     `json:"url"`
+	Location string     `json:"location,omitempty"`
 }
 
 // IAQI is the latest reading for a single pollutant or weather metric,
@@ -79,4 +47,37 @@ type XSync struct {
 	Gen int64 `json:"gen"`
 }
 
-func main() {}
+// FeedResponse is the payload of the token-authenticated feed endpoint
+// https://api.waqi.info/feed/@{idx}/?token={token}.
+type FeedResponse struct {
+	Status string   `json:"status"`
+	Data   FeedData `json:"data"`
+}
+
+type FeedData struct {
+	AQI          int             `json:"aqi"`
+	Idx          int             `json:"idx"`
+	Attributions []Attribution   `json:"attributions"`
+	City         City            `json:"city"`
+	DominentPol  string          `json:"dominentpol"`
+	IAQI         map[string]IAQI `json:"iaqi"`
+	Time         Time            `json:"time"`
+	Forecast     FeedForecast    `json:"forecast"`
+	Debug        FeedDebug       `json:"debug"`
+}
+
+type FeedForecast struct {
+	// Daily is keyed by pollutant code (pm25, pm10, o3, uvi).
+	Daily map[string][]DailyForecast `json:"daily"`
+}
+
+type DailyForecast struct {
+	Avg int    `json:"avg"`
+	Day string `json:"day"`
+	Max int    `json:"max"`
+	Min int    `json:"min"`
+}
+
+type FeedDebug struct {
+	Sync string `json:"sync"`
+}
