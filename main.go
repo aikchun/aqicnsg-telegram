@@ -141,7 +141,11 @@ func buildPM25Report(apiToken string) (string, error) {
 
 		lines[i] = fmt.Sprintf("%s: %d %s", city, a.AQI, aqiEmoji(a.AQI))
 	}
-	return fmt.Sprintf("PM2.5 at %s:\n%s", areas[0].Time, strings.Join(lines, "\n")), nil
+	timeObj, err := time.Parse(time.DateTime, areas[0].Time)
+	if err != nil {
+		return "", fmt.Errorf("time format err: %w", err)
+	}
+	return fmt.Sprintf("PM2.5 AQI at %s %d %s:\n%s", timeObj.Month().String()[:3], timeObj.Day(), timeObj.Format(time.Kitchen), strings.Join(lines, "\n")), nil
 }
 
 // sendMessage sends text to chatID via the Telegram Bot API.
