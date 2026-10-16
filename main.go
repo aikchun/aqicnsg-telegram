@@ -15,6 +15,7 @@ import (
 
 	"github.com/aikchun/aqicnsg-telegram/aqicnsg"
 	"github.com/aikchun/gotelegrambot"
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 )
@@ -181,10 +182,10 @@ func handleNowCommand(u gotelegrambot.Update, bp botParams) {
 }
 
 func handleSubscribe(u gotelegrambot.Update, bp botParams) {
-	conn, err := pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
+	conn, err := pgx.Connect(context.Background(), bp.params["DATABASE_URL"])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		os.Exit(1)
+		return
 	}
 	defer conn.Close(context.Background())
 
@@ -217,10 +218,10 @@ func handleSubscribe(u gotelegrambot.Update, bp botParams) {
 }
 
 func handleUnsubscribe(u gotelegrambot.Update, bp botParams) {
-	conn, err := pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
+	conn, err := pgx.Connect(context.Background(), bp.params["DATABASE_URL"])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		os.Exit(1)
+		return
 	}
 	defer conn.Close(context.Background())
 
@@ -237,7 +238,7 @@ func handleUnsubscribe(u gotelegrambot.Update, bp botParams) {
 
 }
 
-func handleSendReport(u gotelegrambot.Update, bp botParams) {
+func handleSendReport(_ gotelegrambot.Update, bp botParams) {
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, bp.params["DATABASE_URL"])
 	if err != nil {
@@ -295,7 +296,7 @@ func handleCommandNotFound(u gotelegrambot.Update, bp botParams) {
 
 }
 
-func handleUpdate(u *gotelegrambot.Update) {
+func handleUpdate(u gotelegrambot.Update) {
 	// determine what command the Update wants to call
 	b := bot{botToken: os.Getenv("BOT_TOKEN")}
 	b.params = map[string]string{}
@@ -303,14 +304,11 @@ func handleUpdate(u *gotelegrambot.Update) {
 	b.register("now", handleNowCommand)
 	b.register("subscribe", handleSubscribe)
 	b.register("unsubscribe", handleUnsubscribe)
-	b.register("sendreport", handleSendReport)
-	log.Printf("registered handlers")
 	b.registerFallbackHandler(handleCommandNotFound)
-	log.Printf("registerd fallback handler")
-	b.handleUpdate(u)
+	b.handleUpdate(&u)
 }
 
-func handleRequest(w http.ResponseWriter, r *http.Request) {
+func handler(w http.ResponseWriter, r *http.Request) {
 	var u gotelegrambot.Update
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1048576))
@@ -325,7 +323,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 
-	handleUpdate(&u)
+	handleUpdate(u)
 
 }
 
@@ -338,13 +336,29 @@ func main() {
 
 	e := os.Getenv("ENVIRONMENT")
 
-	p := ":8080"
-
 	if e == "dev" {
-		http.HandleFunc("/", handleRequest)
+		p := ":8080"
+		http.HandleFunc("/", handler)
 		fmt.Printf("starting http server\n")
 		fmt.Printf("listening: %s\n", p)
 
 		log.Fatal(http.ListenAndServe(p, nil))
 	}
+
+	if e == "cron" {
+		bp := botParams{
+			botToken: os.Getenv("BOT_TOKEN"),
+			params: map[string]string{
+				"DATABASE_URL": os.Getenv("DATABASE_URL"),
+			},
+		}
+
+		handleSendReport(gotelegrambot.Update{}, bp)
+		return
+	}
+
+	if e == "prod" {
+		lambda.Start(handleUpdate)
+	}
+
 }

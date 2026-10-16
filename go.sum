@@ -1,5 +1,7 @@
 github.com/aikchun/gotelegrambot v0.0.2 h1:mH3UrbWnADWeSULQkyRW3T1gVDua0MnXDXru4RWeSdQ=
 github.com/aikchun/gotelegrambot v0.0.2/go.mod h1:BNGybABtzu0ztgtdGD3PtWigd8MjvVxRUuYii9DHtOA=
+github.com/aws/aws-lambda-go v1.55.1 h1:We2cCp4BwqqH/JW+bEEo1FhgG71rslvjfi4y7KmlrR0=
+github.com/aws/aws-lambda-go v1.55.1/go.mod h1:V+NzkHNR6vBC8C1PDloqSLE+7jYWFiPvJJFiCiTm8nE=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
 github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
