@@ -392,6 +392,7 @@ func main() {
 
 	if e == "cron" {
 		lambda.Start(handleSendReportLambda)
+		return
 	}
 	// handleSendReportLambda(gotelegrambot.Update{})
 
