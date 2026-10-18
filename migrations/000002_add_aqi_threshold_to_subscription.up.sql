@@ -1,0 +1,3 @@
+BEGIN;
+ALTER TABLE subscription ADD COLUMN IF NOT EXISTS "aqi_threshold" smallint NOT NULL DEFAULT 100;
+COMMIT;
