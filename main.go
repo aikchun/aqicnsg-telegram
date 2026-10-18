@@ -127,14 +127,36 @@ func parseText(text string) (string, []string, bool) {
 // buildPM25Report fetches the current area AQIs and formats them as the
 // PM2.5 report text.
 func buildPM25Report(apiToken string) (string, error) {
+	areas, err := getAreaAqis(apiToken)
+	if err != nil {
+		return "", err
+	}
+	return formatPM25Report(areas)
+}
+
+// getAreaAqis fetches the current area AQIs, failing if none are returned.
+func getAreaAqis(apiToken string) ([]aqicnsg.AreaAqi, error) {
 	areas, err := aqicnsg.GetAreaAqis(apiToken)
 	if err != nil {
-		return "", fmt.Errorf("get area aqis: %w", err)
+		return nil, fmt.Errorf("get area aqis: %w", err)
 	}
 	if len(areas) == 0 {
-		return "", fmt.Errorf("get area aqis: no areas returned")
+		return nil, fmt.Errorf("get area aqis: no areas returned")
 	}
+	return areas, nil
+}
 
+// maxAQI returns the highest AQI across areas.
+func maxAQI(areas []aqicnsg.AreaAqi) int {
+	m := areas[0].AQI
+	for _, a := range areas[1:] {
+		m = max(m, a.AQI)
+	}
+	return m
+}
+
+// formatPM25Report formats areas as the PM2.5 report text.
+func formatPM25Report(areas []aqicnsg.AreaAqi) (string, error) {
 	lines := make([]string, len(areas))
 	for i, a := range areas {
 		city, _, _ := strings.Cut(a.City, ",")
@@ -262,7 +284,15 @@ func handleSendReport(_ gotelegrambot.Update, bp botParams) {
 	}
 	defer conn.Close(ctx)
 
-	rows, err := conn.Query(ctx, "SELECT chat_id FROM subscription WHERE is_active = true")
+	// Fetch the AQIs once and send the same text to every subscriber.
+	areas, err := getAreaAqis(bp.params["AQICN_API_TOKEN"])
+	if err != nil {
+		log.Printf("%v", err)
+		return
+	}
+
+	// Only notify subscribers whose threshold is exceeded by at least one area.
+	rows, err := conn.Query(ctx, "SELECT chat_id FROM subscription WHERE is_active = true AND aqi_threshold < $1", maxAQI(areas))
 	if err != nil {
 		log.Printf("unable to query subscriptions: %v", err)
 		return
@@ -276,8 +306,7 @@ func handleSendReport(_ gotelegrambot.Update, bp botParams) {
 		return
 	}
 
-	// Fetch the report once and send the same text to every subscriber.
-	text, err := buildPM25Report(bp.params["AQICN_API_TOKEN"])
+	text, err := formatPM25Report(areas)
 	if err != nil {
 		log.Printf("%v", err)
 		return
