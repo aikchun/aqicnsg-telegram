@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -19,44 +20,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 )
-
-// SendMessageParams holds the parameters of the Telegram Bot API sendMessage
-// method (https://core.telegram.org/bots/api#sendmessage). Nested objects are
-// left as raw JSON.
-type SendMessageParams struct {
-	BusinessConnectionID string `json:"business_connection_id,omitempty"`
-	// ChatID is either an integer chat id or a "@username" string.
-	ChatID                     any             `json:"chat_id"`
-	MessageThreadID            int64           `json:"message_thread_id,omitempty"`
-	DirectMessagesTopicID      int64           `json:"direct_messages_topic_id,omitempty"`
-	EphemeralMessageParameters json.RawMessage `json:"ephemeral_message_parameters,omitempty"`
-	Text                       string          `json:"text"`
-	ParseMode                  string          `json:"parse_mode,omitempty"`
-	Entities                   json.RawMessage `json:"entities,omitempty"`
-	LinkPreviewOptions         json.RawMessage `json:"link_preview_options,omitempty"`
-	DisableNotification        bool            `json:"disable_notification,omitempty"`
-	ProtectContent             bool            `json:"protect_content,omitempty"`
-	AllowPaidBroadcast         bool            `json:"allow_paid_broadcast,omitempty"`
-	MessageEffectID            string          `json:"message_effect_id,omitempty"`
-	SuggestedPostParameters    json.RawMessage `json:"suggested_post_parameters,omitempty"`
-	ReplyParameters            json.RawMessage `json:"reply_parameters,omitempty"`
-	ReplyMarkup                json.RawMessage `json:"reply_markup,omitempty"`
-}
-
-type botParams struct {
-	botToken string
-	params   map[string]string
-}
-
-// commandHandler needs to have an Update and the botToken
-type CommandHandler = func(u gotelegrambot.Update, bp botParams)
-
-type bot struct {
-	botToken        string
-	commandsMap     map[string]CommandHandler
-	fallbackHandler CommandHandler
-	params          map[string]string
-}
 
 func (b *bot) register(commandName string, handler CommandHandler) {
 	if b.commandsMap == nil {
@@ -87,9 +50,10 @@ func (b *bot) getCommandHandler(u *gotelegrambot.Update) CommandHandler {
 
 }
 
-func (b *bot) handleUpdate(u *gotelegrambot.Update) {
+func (b *bot) handleUpdate(u *gotelegrambot.Update) error {
 	commandHandler := b.getCommandHandler(u)
-	commandHandler(*u, botParams{botToken: b.botToken, params: maps.Clone(b.params)})
+	err := commandHandler(*u, botParams{botToken: b.botToken, params: maps.Clone(b.params)})
+	return err
 }
 
 // aqiEmoji returns the coloured circle for the AQI band the value falls in.
@@ -195,23 +159,25 @@ func sendMessage(botToken string, chatID int64, text string) error {
 	return nil
 }
 
-func handleNowCommand(u gotelegrambot.Update, bp botParams) {
+func handleNowCommand(u gotelegrambot.Update, bp botParams) error {
 	text, err := buildPM25Report(bp.params["AQICN_API_TOKEN"])
 	if err != nil {
 		log.Printf("%v", err)
-		return
+		return err
 	}
 
 	if err := sendMessage(bp.botToken, u.Message.Chat.ID, text); err != nil {
 		log.Printf("%v", err)
+		return err
 	}
+	return nil
 }
 
-func handleSubscribe(u gotelegrambot.Update, bp botParams) {
+func handleSubscribe(u gotelegrambot.Update, bp botParams) error {
 	conn, err := pgx.Connect(context.Background(), bp.params["DATABASE_URL"])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		return
+		return err
 	}
 	defer conn.Close(context.Background())
 
@@ -227,10 +193,9 @@ func handleSubscribe(u gotelegrambot.Update, bp botParams) {
 		})
 		if err != nil {
 			log.Printf("unable to insert subscription %v", err)
-			log.Printf("insert: %s", insert)
-			return
+			return err
 		}
-		return
+		return nil
 	}
 	err = pgx.BeginFunc(context.Background(), conn, func(tx pgx.Tx) error {
 		_, err := tx.Exec(context.Background(), fmt.Sprintf("UPDATE subscription SET is_active = %t, updated_at = '%s' WHERE id = %d", true, now, ID))
@@ -238,16 +203,16 @@ func handleSubscribe(u gotelegrambot.Update, bp botParams) {
 	})
 	if err != nil {
 		log.Printf("unable to update subscription %v", err)
-		return
+		return err
 	}
-
+	return nil
 }
 
-func handleUnsubscribe(u gotelegrambot.Update, bp botParams) {
+func handleUnsubscribe(u gotelegrambot.Update, bp botParams) error {
 	conn, err := pgx.Connect(context.Background(), bp.params["DATABASE_URL"])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		return
+		return err
 	}
 	defer conn.Close(context.Background())
 
@@ -259,12 +224,13 @@ func handleUnsubscribe(u gotelegrambot.Update, bp botParams) {
 	})
 	if err != nil {
 		log.Printf("unable to update subscription %v", err)
-		return
+		return err
 	}
+	return nil
 
 }
 
-func handleSendReportLambda(u gotelegrambot.Update) {
+func handleSendReportLambda(u gotelegrambot.Update) error {
 	bp := botParams{
 		botToken: os.Getenv("BOT_TOKEN"),
 		params: map[string]string{
@@ -273,14 +239,16 @@ func handleSendReportLambda(u gotelegrambot.Update) {
 		},
 	}
 
-	handleSendReport(u, bp)
+	err := handleSendReport(u, bp)
+
+	return err
 }
-func handleSendReport(_ gotelegrambot.Update, bp botParams) {
+func handleSendReport(_ gotelegrambot.Update, bp botParams) error {
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, bp.params["DATABASE_URL"])
 	if err != nil {
 		log.Printf("unable to connect to database: %v", err)
-		return
+		return err
 	}
 	defer conn.Close(ctx)
 
@@ -288,45 +256,44 @@ func handleSendReport(_ gotelegrambot.Update, bp botParams) {
 	areas, err := getAreaAqis(bp.params["AQICN_API_TOKEN"])
 	if err != nil {
 		log.Printf("%v", err)
-		return
+		return err
 	}
 
 	// Only notify subscribers whose threshold is exceeded by at least one area.
 	rows, err := conn.Query(ctx, "SELECT chat_id FROM subscription WHERE is_active = true AND aqi_threshold < $1", maxAQI(areas))
 	if err != nil {
 		log.Printf("unable to query subscriptions: %v", err)
-		return
+		return err
 	}
 	chatIDs, err := pgx.CollectRows(rows, pgx.RowTo[int64])
 	if err != nil {
 		log.Printf("unable to read subscriptions: %v", err)
-		return
-	}
-	if len(chatIDs) == 0 {
-		return
+		return err
 	}
 
 	text, err := formatPM25Report(areas)
 	if err != nil {
 		log.Printf("%v", err)
-		return
+		return err
 	}
 
 	for _, chatID := range chatIDs {
 		if err := sendMessage(bp.botToken, chatID, text); err != nil {
 			log.Printf("chat %d: %v", chatID, err)
+			return errors.New("sendMessage fail")
 		}
 	}
+	return nil
 }
 
-func handleCommandNotFound(u gotelegrambot.Update, bp botParams) {
+func handleCommandNotFound(u gotelegrambot.Update, bp botParams) error {
 	b, err := json.Marshal(SendMessageParams{
 		ChatID: u.Message.Chat.ID,
 		Text:   "No such function",
 	})
 	if err != nil {
 		log.Printf("marshal send message params: %v", err)
-		return
+		return err
 	}
 
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", bp.botToken)
@@ -334,9 +301,10 @@ func handleCommandNotFound(u gotelegrambot.Update, bp botParams) {
 	resp, err := http.Post(url, "application/json", bytes.NewReader(b))
 	if err != nil {
 		log.Printf("send message: %v", err)
-		return
+		return err
 	}
 	defer resp.Body.Close()
+	return nil
 
 }
 
@@ -392,9 +360,7 @@ func main() {
 
 	if e == "cron" {
 		lambda.Start(handleSendReportLambda)
-		return
 	}
-	// handleSendReportLambda(gotelegrambot.Update{})
 
 	if e == "prod" {
 		lambda.Start(handleUpdate)
